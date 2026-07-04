@@ -4,6 +4,9 @@ Provides a single main() entry point built on argparse. Supports one
 positional integer argument for integer-to-Roman conversion, or a
 --from flag for Roman-to-integer conversion. Prints only the
 converted value to stdout.
+
+Run directly as a script (e.g. `python -m romanize.cli 1994` or
+`python romanize/cli.py 1994`) via the standard __main__ guard below.
 """
 
 import argparse
