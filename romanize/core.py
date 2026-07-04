@@ -1,8 +1,13 @@
 """Core conversion logic for the romanize package.
 
-Contains the shared numeral tables and to_roman(). from_roman() will be
-added later in this same file.
+Contains the shared numeral tables plus to_roman() and from_roman().
+from_roman() validates strictly: it decodes the numeral and then
+re-encodes the result with to_roman(), rejecting the input unless the
+re-encoded canonical form matches exactly. This catches non-canonical
+strings such as "IIII" or "VX" that a naive summing parser would accept.
 """
+
+import re
 
 _ROMAN_VALUES = [
     (1000, "M"),
@@ -19,6 +24,10 @@ _ROMAN_VALUES = [
     (4, "IV"),
     (1, "I"),
 ]
+
+_ROMAN_PATTERN = re.compile(
+    r"^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$"
+)
 
 MIN_VALUE = 1
 MAX_VALUE = 3999
@@ -37,6 +46,35 @@ def to_roman(n: int) -> str:
         result.append(symbol * count)
 
     return "".join(result)
+
+
+def from_roman(s: str) -> int:
+    """Convert a Roman numeral string to its integer value.
+
+    Raises ValueError for empty, malformed, or non-canonical numerals
+    (e.g. "IIII", "VX", ""). Validation is strict: the decoded value is
+    re-encoded with to_roman() and must match the input exactly.
+    """
+    if not isinstance(s, str) or not s:
+        raise ValueError("expected a non-empty Roman numeral string")
+
+    if not _ROMAN_PATTERN.match(s):
+        raise ValueError(f"invalid Roman numeral: {s!r}")
+
+    value = 0
+    remaining = s
+    for amount, symbol in _ROMAN_VALUES:
+        while remaining.startswith(symbol):
+            value += amount
+            remaining = remaining[len(symbol):]
+
+    if remaining:
+        raise ValueError(f"invalid Roman numeral: {s!r}")
+
+    if value < MIN_VALUE or value > MAX_VALUE or to_roman(value) != s:
+        raise ValueError(f"invalid Roman numeral: {s!r}")
+
+    return value
 
 
 def _validate_int_range(n: int) -> None:
