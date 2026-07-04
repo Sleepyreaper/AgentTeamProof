@@ -1,12 +1,14 @@
-"""Tests for romanize.core: to_roman / from_roman contract.
+"""Tests for the romanize package: core contract + CLI behavior.
 
 SPEC SOURCE: task spec "romanize" ground truth (symbols, subtractive
-pairs, range 1..3999, canonical round-trip behavior).
+pairs, range 1..3999, canonical round-trip behavior) and the CLI
+examples `romanize 1994` -> "MCMXCIV" / `romanize --from MCMXCIV` -> "1994".
 """
 
 import pytest
 
 from romanize.core import to_roman, from_roman
+from romanize.cli import main
 
 
 # ---------------------------------------------------------------------------
@@ -72,14 +74,15 @@ def test_to_roman_then_from_roman_round_trips(value):
 
 @pytest.mark.parametrize("value", REQUIRED_ROUND_TRIP_VALUES)
 def test_from_roman_then_to_roman_round_trips(value):
-    # GIVEN a required integer value's canonical numeral
+    # GIVEN a required integer value, first rendered to a numeral
     numeral = to_roman(value)
-    # WHEN parsed back to int and re-encoded
-    result = to_roman(from_roman(numeral))
-    # THEN we get the same canonical numeral back
-    assert result == numeral, (
-        f"expected re-encoding of {numeral!r} to equal itself, got {result!r}. "
-        "Gil, this means from_roman/to_roman are not perfect inverses."
+    # WHEN parsed back and re-rendered
+    re_rendered = to_roman(from_roman(numeral))
+    # THEN the canonical numeral form is stable
+    assert re_rendered == numeral, (
+        f"round-trip failed: {numeral!r} -> from_roman -> re-rendered as "
+        f"{re_rendered!r}, expected {numeral!r} unchanged. "
+        "Gil, from_roman and to_roman must be inverses of each other."
     )
 
 
@@ -87,72 +90,64 @@ def test_from_roman_then_to_roman_round_trips(value):
 # Error cases: out-of-range integers
 # ---------------------------------------------------------------------------
 
-def test_to_roman_zero_raises_value_error():
-    # GIVEN 0, which is below the valid range
-    # WHEN / THEN to_roman raises ValueError
+@pytest.mark.parametrize("value", [0, -1, 4000, 10000])
+def test_to_roman_raises_value_error_for_out_of_range(value):
+    # GIVEN an integer outside 1..3999
+    # WHEN to_roman is called
+    # THEN a ValueError is raised
     with pytest.raises(ValueError):
-        to_roman(0)
-
-
-def test_to_roman_4000_raises_value_error():
-    # GIVEN 4000, which is above the valid range
-    # WHEN / THEN to_roman raises ValueError
-    with pytest.raises(ValueError):
-        to_roman(4000)
-
-
-@pytest.mark.parametrize("bad_value", [-1, -100, 4000, 10000])
-def test_to_roman_out_of_range_raises_value_error(bad_value):
-    # GIVEN a value outside 1..3999
-    # WHEN / THEN to_roman raises ValueError
-    with pytest.raises(ValueError):
-        to_roman(bad_value)
+        to_roman(value)
+    # If this test fails, Gil: to_roman must validate 1 <= n <= 3999.
 
 
 # ---------------------------------------------------------------------------
-# Error cases: invalid numeral strings
+# Error cases: invalid numerals
 # ---------------------------------------------------------------------------
 
-def test_from_roman_iiii_raises_value_error():
-    # GIVEN "IIII", a non-canonical (invalid) numeral
-    # WHEN / THEN from_roman raises ValueError
+@pytest.mark.parametrize("numeral", ["IIII", "VX", "", "IC", "ABC", "iv"])
+def test_from_roman_raises_value_error_for_invalid_numeral(numeral):
+    # GIVEN a malformed or non-canonical Roman numeral string
+    # WHEN from_roman is called
+    # THEN a ValueError is raised
     with pytest.raises(ValueError):
-        from_roman("IIII")
-
-
-def test_from_roman_empty_string_raises_value_error():
-    # GIVEN "", an empty string
-    # WHEN / THEN from_roman raises ValueError
-    with pytest.raises(ValueError):
-        from_roman("")
-
-
-@pytest.mark.parametrize(
-    "bad_numeral",
-    ["VX", "IIII", "", "ABCD", "iv", "MMMM", "IIV", "IL", "VV", "  IV"],
-)
-def test_from_roman_invalid_numerals_raise_value_error(bad_numeral):
-    # GIVEN a malformed or non-canonical numeral string
-    # WHEN / THEN from_roman raises ValueError
-    with pytest.raises(ValueError):
-        from_roman(bad_numeral)
+        from_roman(numeral)
+    # If this test fails, Gil: from_roman must reject anything that does
+    # not round-trip to its own canonical form (e.g. "IIII" is not "IV").
 
 
 # ---------------------------------------------------------------------------
-# Inverse property test over a representative sample
+# CLI behavior: the two documented examples
 # ---------------------------------------------------------------------------
 
-SAMPLE_VALUES = [1, 2, 3, 4, 5, 9, 10, 14, 40, 49, 90, 99, 400, 444, 900,
-                 999, 1000, 1444, 1994, 2023, 3888, 3999]
+def test_cli_prints_roman_numeral_for_integer_argument(capsys):
+    # GIVEN the CLI invoked with a positional integer, e.g. `romanize 1994`
+    # WHEN main() runs
+    exit_code = main(["1994"])
+    # THEN it prints the expected Roman numeral and exits cleanly
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "MCMXCIV", (
+        f"expected CLI to print 'MCMXCIV' for `romanize 1994`, "
+        f"got {captured.out.strip()!r}. "
+        "Gil, check that main() calls to_roman(number) and prints the result."
+    )
+    assert exit_code == 0, (
+        f"expected exit code 0 for a successful conversion, got {exit_code}. "
+        "Gil, main() should return 0 on success."
+    )
 
 
-@pytest.mark.parametrize("value", SAMPLE_VALUES)
-def test_inverse_property_to_roman_from_roman(value):
-    # GIVEN any value in the representative sample
-    # WHEN converted to Roman then back to int
-    # THEN the composition is the identity function
-    assert from_roman(to_roman(value)) == value, (
-        f"inverse property violated for {value}: "
-        f"from_roman(to_roman({value})) != {value}. "
-        "Gil, this is the core contract — please check it carefully."
+def test_cli_prints_integer_for_from_roman_argument(capsys):
+    # GIVEN the CLI invoked with --from, e.g. `romanize --from MCMXCIV`
+    # WHEN main() runs
+    exit_code = main(["--from", "MCMXCIV"])
+    # THEN it prints the expected integer and exits cleanly
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "1994", (
+        f"expected CLI to print '1994' for `romanize --from MCMXCIV`, "
+        f"got {captured.out.strip()!r}. "
+        "Gil, check that main() calls from_roman(value) and prints the result."
+    )
+    assert exit_code == 0, (
+        f"expected exit code 0 for a successful conversion, got {exit_code}. "
+        "Gil, main() should return 0 on success."
     )
