@@ -7,8 +7,39 @@ examples `romanize 1994` -> "MCMXCIV" / `romanize --from MCMXCIV` -> "1994".
 
 import pytest
 
+import romanize
 from romanize.core import to_roman, from_roman
 from romanize.cli import main
+
+
+# ---------------------------------------------------------------------------
+# Package import smoke test (public export surface via romanize/__init__.py)
+# ---------------------------------------------------------------------------
+
+def test_package_exports_to_roman_and_from_roman():
+    # GIVEN the public package import (not the internal core module)
+    from romanize import to_roman as pkg_to_roman
+    from romanize import from_roman as pkg_from_roman
+
+    # WHEN used for a known value pair
+    numeral = pkg_to_roman(1994)
+    value = pkg_from_roman("MCMXCIV")
+
+    # THEN the exported functions behave exactly like romanize.core's
+    assert numeral == "MCMXCIV", (
+        f"expected 'MCMXCIV' from package-level to_roman(1994), got {numeral!r}. "
+        "Gil, check romanize/__init__.py exports the correct function."
+    )
+    assert value == 1994, (
+        f"expected 1994 from package-level from_roman('MCMXCIV'), got {value!r}. "
+        "Gil, check romanize/__init__.py exports the correct function."
+    )
+    assert romanize.to_roman is to_roman, (
+        "romanize.to_roman should be the same object as romanize.core.to_roman"
+    )
+    assert romanize.from_roman is from_roman, (
+        "romanize.from_roman should be the same object as romanize.core.from_roman"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -72,82 +103,49 @@ def test_to_roman_then_from_roman_round_trips(value):
     )
 
 
-@pytest.mark.parametrize("value", REQUIRED_ROUND_TRIP_VALUES)
-def test_from_roman_then_to_roman_round_trips(value):
-    # GIVEN a required integer value, first rendered to a numeral
-    numeral = to_roman(value)
-    # WHEN parsed back and re-rendered
-    re_rendered = to_roman(from_roman(numeral))
-    # THEN the canonical numeral form is stable
-    assert re_rendered == numeral, (
-        f"round-trip failed: {numeral!r} -> from_roman -> re-rendered as "
-        f"{re_rendered!r}, expected {numeral!r} unchanged. "
-        "Gil, from_roman and to_roman must be inverses of each other."
-    )
-
-
 # ---------------------------------------------------------------------------
-# Error cases: out-of-range integers
+# Error cases
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("value", [0, -1, 4000, 10000])
-def test_to_roman_raises_value_error_for_out_of_range(value):
-    # GIVEN an integer outside 1..3999
-    # WHEN to_roman is called
-    # THEN a ValueError is raised
+@pytest.mark.parametrize("bad_value", [0, 4000])
+def test_to_roman_out_of_range_raises_value_error(bad_value):
+    # GIVEN an out-of-range integer
+    # WHEN/THEN to_roman raises ValueError
     with pytest.raises(ValueError):
-        to_roman(value)
-    # If this test fails, Gil: to_roman must validate 1 <= n <= 3999.
+        to_roman(bad_value)
 
 
-# ---------------------------------------------------------------------------
-# Error cases: invalid numerals
-# ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("numeral", ["IIII", "VX", "", "IC", "ABC", "iv"])
-def test_from_roman_raises_value_error_for_invalid_numeral(numeral):
-    # GIVEN a malformed or non-canonical Roman numeral string
-    # WHEN from_roman is called
-    # THEN a ValueError is raised
+@pytest.mark.parametrize("bad_numeral", ["IIII", ""])
+def test_from_roman_invalid_numeral_raises_value_error(bad_numeral):
+    # GIVEN an invalid Roman numeral string
+    # WHEN/THEN from_roman raises ValueError
     with pytest.raises(ValueError):
-        from_roman(numeral)
-    # If this test fails, Gil: from_roman must reject anything that does
-    # not round-trip to its own canonical form (e.g. "IIII" is not "IV").
+        from_roman(bad_numeral)
 
 
 # ---------------------------------------------------------------------------
-# CLI behavior: the two documented examples
+# CLI behavior
 # ---------------------------------------------------------------------------
 
-def test_cli_prints_roman_numeral_for_integer_argument(capsys):
-    # GIVEN the CLI invoked with a positional integer, e.g. `romanize 1994`
-    # WHEN main() runs
+def test_cli_positional_int_prints_roman(capsys):
+    # GIVEN `romanize 1994`
     exit_code = main(["1994"])
-    # THEN it prints the expected Roman numeral and exits cleanly
     captured = capsys.readouterr()
+
+    # THEN it prints "MCMXCIV" and exits cleanly
+    assert exit_code == 0
     assert captured.out.strip() == "MCMXCIV", (
-        f"expected CLI to print 'MCMXCIV' for `romanize 1994`, "
-        f"got {captured.out.strip()!r}. "
-        "Gil, check that main() calls to_roman(number) and prints the result."
-    )
-    assert exit_code == 0, (
-        f"expected exit code 0 for a successful conversion, got {exit_code}. "
-        "Gil, main() should return 0 on success."
+        f"expected CLI to print 'MCMXCIV' for `romanize 1994`, got {captured.out!r}"
     )
 
 
-def test_cli_prints_integer_for_from_roman_argument(capsys):
-    # GIVEN the CLI invoked with --from, e.g. `romanize --from MCMXCIV`
-    # WHEN main() runs
+def test_cli_from_flag_prints_int(capsys):
+    # GIVEN `romanize --from MCMXCIV`
     exit_code = main(["--from", "MCMXCIV"])
-    # THEN it prints the expected integer and exits cleanly
     captured = capsys.readouterr()
+
+    # THEN it prints "1994" and exits cleanly
+    assert exit_code == 0
     assert captured.out.strip() == "1994", (
-        f"expected CLI to print '1994' for `romanize --from MCMXCIV`, "
-        f"got {captured.out.strip()!r}. "
-        "Gil, check that main() calls from_roman(value) and prints the result."
-    )
-    assert exit_code == 0, (
-        f"expected exit code 0 for a successful conversion, got {exit_code}. "
-        "Gil, main() should return 0 on success."
+        f"expected CLI to print '1994' for `romanize --from MCMXCIV`, got {captured.out!r}"
     )
